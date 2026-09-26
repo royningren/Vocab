@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>VocabMaster</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background-color: #f3f4f6; }
+        .perspective { perspective: 1000px; }
+        .transform-style-3d { transform-style: preserve-3d; }
+        .backface-hidden { backface-visibility: hidden; }
+        .rotate-y-180 { transform: rotateY(180deg); }
+        .card-transition { transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1); }
+        ::-webkit-scrollbar { width: 0px; background: transparent; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background-color: #cbd5e1; border-radius: 10px; }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <div class="max-w-md w-full mx-auto h-full bg-white shadow-2xl flex flex-col relative">
+        
+        <!-- Header -->
+        <header class="bg-indigo-600 text-white p-4 shadow-md flex justify-between items-center z-10">
+            <h1 class="text-xl font-bold flex items-center gap-2">
+                <i class="fa-solid fa-brain"></i> VocabMaster
+            </h1>
+            <div id="connectionStatus" class="text-xs bg-indigo-500 px-2 py-1 rounded-full flex items-center gap-1">
+                <div class="w-2 h-2 bg-yellow-300 rounded-full animate-pulse"></div> Connecting...
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="flex-1 overflow-y-auto bg-slate-50 relative" id="mainContent">
+            
+            <!-- View: Learn -->
+            <div id="view-learn" class="view-section h-full flex flex-col p-4 hidden">
+                <div id="sessionSetup" class="flex-1 flex flex-col items-center justify-center text-center">
+                    <i class="fa-solid fa-layer-group text-6xl text-indigo-300 mb-4"></i>
+                    <h2 class="text-2xl font-bold mb-2">Ready to Learn?</h2>
+                    <p class="text-slate-500 mb-6" id="wordsDueText">Loading library...</p>
+                    <button onclick="startSession()" id="btnStartSession" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-full shadow-lg transition-transform active:scale-95 disabled:opacity-50">
+                        Start Session
+                    </button>
+                </div>
+
+                <div id="flashcardArea" class="hidden h-full flex-col">
+                    <!-- Top Bar with Abort Button and Progress -->
+                    <div class="flex justify-between items-center mb-4 text-sm font-medium text-slate-500">
+                        <button onclick="abortAndResetSession()" class="text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1 pr-2 border-r border-slate-300" title="Quit and revert session progress">
+                            <i class="fa-solid fa-arrow-rotate-left"></i> Quit
+                        </button>
+                        <div class="flex-1 mx-3 bg-slate-200 rounded-full h-2.5">
+                          <div id="progressBar" class="bg-indigo-600 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                        </div>
+                        <span id="progressText" class="min-w-[45px] text-right text-xs">0/0</span>
+                    </div>
+
+                    <div class="flex-1 perspective relative w-full mb-6 cursor-pointer" onclick="flipCard()">
+                        <div id="cardInner" class="w-full h-full absolute transform-style-3d card-transition shadow-xl rounded-3xl">
+                            <!-- Front -->
+                            <div class="absolute w-full h-full bg-white rounded-3xl backface-hidden flex flex-col items-center justify-center p-6 border-2 border-slate-100">
+                                <span class="text-sm text-slate-400 absolute top-4">Tap card to flip</span>
+                                <h3 id="cardWord" class="text-5xl font-bold text-indigo-900 text-center break-words">Word</h3>
+                            </div>
+                            <!-- Back -->
+                            <div class="absolute w-full h-full bg-indigo-50 rounded-3xl backface-hidden rotate-y-180 flex flex-col items-center justify-center p-6 border-2 border-indigo-100">
+                                <h3 id="cardWordBack" class="text-3xl font-bold text-indigo-900 mb-2 text-center">Word</h3>
+                                <span id="cardPos" class="text-sm font-semibold text-indigo-500 mb-2 italic"></span>
+                                <div class="w-16 h-1 bg-indigo-200 mb-4 rounded-full"></div>
+                                <p id="cardMeaning" class="text-xl text-slate-700 text-center">Meaning</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Action Buttons -->
+                    <div id="actionButtons" class="grid grid-cols-2 gap-3 mb-2 opacity-50 pointer-events-none transition-opacity">
+                        <button onclick="handleAnswer('forget')" class="bg-rose-100 text-rose-700 hover:bg-rose-200 font-bold py-4 rounded-2xl flex flex-col items-center gap-1 active:scale-95 transition-transform">
+                            <i class="fa-solid fa-xmark text-xl"></i>
+                            <span>Forgot / New</span>
+                        </button>
+                        <button onclick="handleAnswer('know')" class="bg-emerald-100 text-emerald-700 hover:bg-emerald-200 font-bold py-4 rounded-2xl flex flex-col items-center gap-1 active:scale-95 transition-transform">
+                            <i class="fa-solid fa-check text-xl"></i>
+                            <span>Know</span>
+                        </button>
+                        <button onclick="handleAnswer('mastered')" class="col-span-2 bg-slate-200 text-slate-600 hover:bg-slate-300 font-medium py-3 rounded-2xl flex items-center justify-center gap-2 active:scale-95 transition-transform">
+                            <i class="fa-solid fa-ban"></i>
+                            <span>Mastered (Don't show again)</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div id="sessionComplete" class="hidden flex-1 flex flex-col items-center justify-center text-center">
+                    <i class="fa-solid fa-trophy text-6xl text-yellow-400 mb-4"></i>
+                    <h2 class="text-2xl font-bold mb-2">Awesome!</h2>
+                    <p class="text-slate-500 mb-6">You've completed this session.</p>
+                    <button onclick="resetSessionUI()" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-8 rounded-full shadow-lg active:scale-95">
+                        Back to Home
+                    </button>
+                </div>
+            </div>
+
+            <!-- View: Admin (Import & Manage) -->
+            <div id="view-admin" class="view-section p-6 hidden">
+                <h2 class="text-xl font-bold mb-4 border-b pb-2"><i class="fa-solid fa-file-import mr-2"></i>Bulk Import</h2>
+                <div class="bg-indigo-50 text-indigo-800 text-sm p-3 rounded-xl mb-4">
+                    <p>Importing to library: <span id="currentImportLibName" class="font-bold underline">Default Library</span></p>
+                    <p class="mt-2 font-semibold">Supported formats (per line):</p>
+                    <ul class="list-disc pl-4 mt-1 opacity-90 text-xs space-y-1">
+                        <li><code>word - meaning</code> (e.g., apple - 苹果)</li>
+                        <li><code>word - pos - meaning</code> (e.g., apple - n. - 苹果)</li>
+                        <li>Delimiters allowed: hyphens <code>-</code> or commas <code>,</code></li>
+                    </ul>
+                </div>
+                <textarea id="importTextarea" rows="4" class="w-full border-2 border-slate-200 rounded-xl p-3 focus:border-indigo-500 focus:outline-none resize-none mb-4" placeholder="Paste your word list here..."></textarea>
+                <button onclick="importWords()" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow active:scale-95 transition-transform flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Start Import
+                </button>
+                
+                <div class="mt-8">
+                    <h3 class="font-bold text-slate-700 mb-2">Library Stats</h3>
+                    <div class="grid grid-cols-2 gap-4">
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 text-center">
+                            <div class="text-3xl font-bold text-indigo-600" id="statTotal">0</div>
+                            <div class="text-xs text-slate-500">Total Words</div>
+                        </div>
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-100 text-center">
+                            <div class="text-3xl font-bold text-emerald-500" id="statMastered">0</div>
+                            <div class="text-xs text-slate-500">Mastered</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Word List Management -->
+                <div class="mt-8 mb-4">
+                    <h3 class="font-bold text-slate-700 mb-2 border-b pb-2 flex justify-between items-end">
+                        <span><i class="fa-solid fa-list text-sm mr-1"></i>Word List Details</span>
+                        <span class="text-xs font-normal text-slate-400">Total: <span id="listTotalCount">0</span> (Max 10k)</span>
+                    </h3>
+                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden flex flex-col" style="height: 350px;">
+                        <div class="overflow-y-auto p-2 space-y-2 custom-scrollbar flex-1" id="wordListArea">
+                            <p class="text-center text-slate-400 text-sm mt-10">Loading...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- View: Settings -->
+            <div id="view-settings" class="view-section p-6 hidden">
+                <h2 class="text-xl font-bold mb-6 border-b pb-2"><i class="fa-solid fa-gear mr-2"></i>Settings</h2>
+                
+                <div class="space-y-6">
+                    <!-- Library Management -->
+                    <div class="bg-indigo-50 p-4 rounded-xl border border-indigo-100">
+                        <label class="block text-sm font-bold text-indigo-900 mb-2 border-b border-indigo-200 pb-2">Library Management</label>
+                        <div class="flex items-center gap-2 mb-3">
+                            <select id="settingLibrary" class="flex-1 border-2 border-indigo-200 rounded-lg p-2 bg-white text-sm focus:outline-none" onchange="changeLibrary()">
+                                <option value="words">Default</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2 mt-2">
+                            <input type="text" id="newLibraryName" placeholder="New library name (e.g. GRE)" class="flex-1 border border-slate-300 rounded-lg p-2 text-sm focus:outline-none">
+                            <button onclick="addLibrary()" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-bold whitespace-nowrap active:scale-95 transition-transform">Create</button>
+                        </div>
+                        
+                        <!-- Danger Zone -->
+                        <div class="mt-4 pt-4 border-t border-indigo-200">
+                            <button onclick="deleteCurrentLibrary()" class="w-full bg-rose-100 text-rose-700 hover:bg-rose-200 px-4 py-2 rounded-lg text-sm font-bold active:scale-95 transition-transform flex items-center justify-center gap-1">
+                                <i class="fa-solid fa-trash-can"></i> Delete Current Library
+                            </button>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold text-slate-700 mb-2">Max Words per Session</label>
+                        <div class="flex items-center gap-4">
+                            <input type="range" id="settingMaxWords" min="5" max="100" step="5" value="20" class="flex-1" oninput="document.getElementById('maxWordsVal').innerText = this.value">
+                            <span id="maxWordsVal" class="font-bold text-indigo-600 w-8 text-right">20</span>
+                        </div>
+                    </div>
+
+                    <!-- Spaced Repetition Settings -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-200">
+                        <label class="block text-sm font-bold text-slate-700 mb-4 border-b pb-2">Spaced Repetition Intervals (Days)</label>
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="text-sm text-slate-600">1) Forgot / New:</label>
+                            <input type="number" id="interval-forgot" value="1" min="1" class="w-16 border border-slate-300 rounded p-1 text-center">
+                        </div>
+                        <div class="flex items-center justify-between mb-3">
+                            <label class="text-sm text-slate-600">2) First time known:</label>
+                            <input type="number" id="interval-known-1" value="6" min="1" class="w-16 border border-slate-300 rounded p-1 text-center">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <label class="text-sm text-slate-600">3) Known again:</label>
+                            <input type="number" id="interval-known-2" value="30" min="1" class="w-16 border border-slate-300 rounded p-1 text-center">
+                        </div>
+                    </div>
+
+                    <div class="pt-6 border-t border-slate-200">
+                        <button onclick="saveSettings(true)" class="w-full bg-slate-800 hover:bg-slate-900 text-white font-bold py-3 rounded-xl shadow active:scale-95 transition-transform">
+                            Save Settings
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Bottom Nav -->
+        <nav class="bg-white border-t border-slate-200 flex justify-around pb-safe pt-2 px-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10">
+            <button onclick="switchView('learn')" id="nav-learn" class="nav-btn flex-1 flex flex-col items-center py-2 text-indigo-600 transition-colors">
+                <i class="fa-solid fa-book-open text-xl mb-1"></i>
+                <span class="text-[10px] font-medium">Learn</span>
+            </button>
+            <button onclick="switchView('admin')" id="nav-admin" class="nav-btn flex-1 flex flex-col items-center py-2 text-slate-400 hover:text-indigo-500 transition-colors">
+                <i class="fa-solid fa-file-import text-xl mb-1"></i>
+                <span class="text-[10px] font-medium">Library</span>
+            </button>
+            <button onclick="switchView('settings')" id="nav-settings" class="nav-btn flex-1 flex flex-col items-center py-2 text-slate-400 hover:text-indigo-500 transition-colors">
+                <i class="fa-solid fa-gear text-xl mb-1"></i>
+                <span class="text-[10px] font-medium">Settings</span>
+            </button>
+        </nav>
+    </div>
+
+    <!-- Modal -->
+    <div id="customModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl transform scale-95 transition-transform" id="modalContent">
+            <h3 class="text-lg font-bold mb-2" id="modalTitle">Notice</h3>
+            <p class="text-slate-600 mb-6" id="modalMessage">Message content</p>
+            <button onclick="closeModal()" class="w-full bg-indigo-600 text-white font-bold py-2 rounded-xl">OK</button>
+        </div>
+    </div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, collection, onSnapshot, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const appId = 'my-vocab-master-app'; 
+        
+        const firebaseConfig = {
+            apiKey: "AIzaSyDijMD-M3JySv_6aXjEEsYWDUY2dwhs7sI",
+            authDomain: "vocab-9955e.firebaseapp.com",
+            projectId: "vocab-9955e",
+            storageBucket: "vocab-9955e.firebasestorage.app",
+            messagingSenderId: "116019499855",
+            appId: "1:116019499855:web:3bda3acf4c2dcf51c0eb3a",
+            measurementId: "G-WEPFETFMV0"
+        };
+
+        let app, auth, db, userId;
+        
+        let allWords = [];
+        let sessionWords = [];
+        let sessionOriginalStates = []; // 新增：保存会话开始时单词的快照
+        let currentCardIndex = 0;
+        let isFlipped = false;
+        let unsubscribeSnapshot = null; 
+        
+        let currentLibrary = 'words';
+        let availableLibraries = ['words'];
+        let userSettings = {
+            maxSessionWords: 20,
+            intervalForgot: 1,
+            intervalKnown1: 6,
+            intervalKnown2: 30,
+            currentLibrary: 'words',
+            availableLibraries: ['words']
+        };
+
+        window.showModal = (title, message) => {
+            document.getElementById('modalTitle').innerText = title;
+            document.getElementById('modalMessage').innerText = message;
+            document.getElementById('customModal').classList.remove('hidden');
+            setTimeout(() => document.getElementById('modalContent').classList.remove('scale-95'), 10);
+        };
+        window.closeModal = () => {
+            document.getElementById('customModal').classList.add('hidden');
+            document.getElementById('modalContent').classList.add('scale-95');
+        };
+
+        window.switchView = (viewName) => {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.getElementById(`view-${viewName}`).classList.remove('hidden');
+            
+            document.querySelectorAll('.nav-btn').forEach(el => {
+                el.classList.remove('text-indigo-600');
+                el.classList.add('text-slate-400');
+            });
+            document.getElementById(`nav-${viewName}`).classList.add('text-indigo-600');
+            document.getElementById(`nav-${viewName}`).classList.remove('text-slate-400');
+        };
+
+        async function initApp() {
+            try {
+                app = initializeApp(firebaseConfig);
+                auth = getAuth(app);
+                db = getFirestore(app);
+
+                await signInAnonymously(auth);
+                userId = auth.currentUser?.uid;
+                if (!userId) throw new Error("Auth failed");
+
+                updateConnectionStatus(true);
+                loadSettingsFromLocal();
+                setupRealtimeListener(); 
+            } catch (error) {
+                console.error(error);
+                updateConnectionStatus(false);
+            }
+        }
+
+        function updateConnectionStatus(isConnected) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (isConnected) {
+                statusEl.innerHTML = `<div class="w-2 h-2 bg-emerald-400 rounded-full"></div> Connected`;
+                statusEl.classList.replace('bg-indigo-500', 'bg-emerald-600');
+            } else {
+                statusEl.innerHTML = `<div class="w-2 h-2 bg-rose-400 rounded-full"></div> Offline`;
+                statusEl.classList.replace('bg-indigo-500', 'bg-rose-600');
+            }
+        }
+
+        function setupRealtimeListener() {
+            if (!userId) return;
+            
+            if (unsubscribeSnapshot) {
+                unsubscribeSnapshot();
+                allWords = []; 
+                updateDashboardStats();
+                renderWordList();
+            }
+
+            const wordsRef = collection(db, 'artifacts', appId, 'users', userId, currentLibrary);
+            
+            unsubscribeSnapshot = onSnapshot(wordsRef, (snapshot) => {
+                allWords = snapshot.docs.map(doc => ({
+                    id: doc.id,
+                    ...doc.data()
+                }));
+                updateDashboardStats();
+                updateSessionAvailability();
+                renderWordList(); 
+                
+                const libName = currentLibrary === 'words' ? 'Default Library' : currentLibrary;
+                document.getElementById('currentImportLibName').innerText = libName;
+            }, (error) => console.error(error));
+        }
+
+        function updateDashboardStats() {
+            document.getElementById('statTotal').innerText = allWords.length;
+            const mastered = allWords.filter(w => w.status === 'known').length;
+            document.getElementById('statMastered').innerText = mastered;
+            document.getElementById('listTotalCount').innerText = allWords.length;
+        }
+
+        function updateSessionAvailability() {
+            const now = Date.now();
+            const dueWordsCount = allWords.filter(w => w.status !== 'known' && (!w.nextReview || w.nextReview <= now)).length;
+            const btn = document.getElementById('btnStartSession');
+            const text = document.getElementById('wordsDueText');
+            const libName = currentLibrary === 'words' ? 'Default Library' : currentLibrary;
+            
+            if (allWords.length === 0) {
+                text.innerText = `[${libName}] is empty. Please import words.`;
+                btn.disabled = true;
+                btn.innerText = "Go to Import";
+                btn.onclick = () => window.switchView('admin');
+            } else if (dueWordsCount === 0) {
+                text.innerText = `No words to review in [${libName}] today.`;
+                btn.disabled = true;
+                btn.innerText = "All caught up";
+                btn.onclick = null;
+            } else {
+                text.innerText = `[${libName}] has ${dueWordsCount} words to review.`;
+                btn.disabled = false;
+                btn.innerText = "Start Session";
+                btn.onclick = window.startSession;
+            }
+        }
+
+        window.renderWordList = () => {
+            const container = document.getElementById('wordListArea');
+            if (allWords.length === 0) {
+                container.innerHTML = '<p class="text-center text-slate-400 text-sm mt-10">Library is empty</p>';
+                return;
+            }
+            
+            let html = '';
+            const displayLimit = 10000;
+            const sortedWords = [...allWords].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)).slice(0, displayLimit);
+
+            sortedWords.forEach(w => {
+                let statusBadge = '';
+                if(w.status === 'known') statusBadge = '<span class="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px]">Mastered</span>';
+                else if(w.status === 'learning') statusBadge = '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-[10px]">Learning</span>';
+                else statusBadge = '<span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-[10px]">New</span>';
+
+                let nextDateStr = "Today";
+                if(w.nextReview && w.nextReview > Date.now()) {
+                    const d = new Date(w.nextReview);
+                    nextDateStr = `${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+                }
+
+                const posTag = w.pos ? `<span class="italic text-indigo-400 mr-1">[${w.pos}]</span>` : '';
+
+                html += `
+                    <div class="flex flex-col p-3 border border-slate-100 rounded-lg hover:bg-slate-50 bg-white shadow-sm">
+                        <div class="flex justify-between items-start mb-1">
+                            <span class="font-bold text-indigo-900">${w.word}</span>
+                            ${statusBadge}
+                        </div>
+                        <div class="text-xs text-slate-500 mb-2 truncate">${posTag}${w.meaning}</div>
+                        <div class="flex justify-between items-center mt-2 pt-2 border-t border-slate-50">
+                            <span class="text-[10px] text-slate-400">Next: ${nextDateStr}</span>
+                            <div class="flex gap-1 flex-wrap justify-end">
+                                <button onclick="markWordMastered('${w.id}')" title="Mark as Mastered" class="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded hover:bg-emerald-100 active:scale-95"><i class="fa-solid fa-check"></i> Mastered</button>
+                                <button onclick="resetWordStatus('${w.id}')" title="Reset to New" class="text-[10px] bg-indigo-50 text-indigo-600 px-2 py-1 rounded hover:bg-indigo-100 active:scale-95"><i class="fa-solid fa-rotate-left"></i> Reset</button>
+                                <button onclick="deleteWord('${w.id}')" title="Delete word" class="text-[10px] bg-rose-50 text-rose-600 px-2 py-1 rounded hover:bg-rose-100 active:scale-95"><i class="fa-solid fa-trash"></i></button>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            container.innerHTML = html;
+        };
+
+        window.markWordMastered = async (docId) => {
+            if(!confirm("Mark this word as 'Mastered'? It won't appear in reviews again.")) return;
+            const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, docId);
+            try {
+                await updateDoc(wordRef, {
+                    status: 'known',
+                    lastReviewedAt: Date.now()
+                });
+            } catch (e) {
+                console.error(e);
+                alert("Failed. Please check your connection.");
+            }
+        };
+
+        window.resetWordStatus = async (docId) => {
+            if(!confirm("Are you sure you want to reset this word's status to 'New'? It will be scheduled for review today.")) return;
+            const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, docId);
+            try {
+                await updateDoc(wordRef, {
+                    status: 'new',
+                    level: 0,
+                    nextReview: Date.now()
+                });
+            } catch (e) {
+                console.error(e);
+                alert("Reset failed. Please check your connection.");
+            }
+        };
+
+        window.deleteWord = async (docId) => {
+            if(!confirm("Are you sure you want to completely delete this word?")) return;
+            const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, docId);
+            try {
+                await deleteDoc(wordRef);
+            } catch (e) {
+                console.error(e);
+                alert("Delete failed. Please check your connection.");
+            }
+        };
+
+        window.deleteCurrentLibrary = async () => {
+            const isDefault = (currentLibrary === 'words');
+
+            let promptMsg = '';
+            if (isDefault) {
+                promptMsg = `⚠️ WARNING!\nYou are about to EMPTY the Default Library.\nThis will delete all words inside it, but KEEP the library itself.\nThis action cannot be undone.\n\nType "words" below to confirm:`;
+            } else {
+                promptMsg = `⚠️ WARNING!\nAre you sure you want to delete library [${currentLibrary}] and all its words?\nThis action cannot be undone.\n\nType the library name below to confirm:`;
+            }
+
+            const confirmName = prompt(promptMsg);
+            
+            if (confirmName !== currentLibrary) {
+                if(confirmName !== null) alert("Name doesn't match. Action cancelled.");
+                return;
+            }
+
+            try {
+                window.showModal("Processing", isDefault ? "Emptying library..." : "Deleting library...");
+                
+                const batchLimit = 500;
+                let chunks = [];
+                for(let i=0; i<allWords.length; i+=batchLimit) {
+                    chunks.push(allWords.slice(i, i+batchLimit));
+                }
+                
+                for(let chunk of chunks) {
+                    const batch = writeBatch(db);
+                    chunk.forEach(w => {
+                        const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, w.id);
+                        batch.delete(wordRef);
+                    });
+                    await batch.commit();
+                }
+
+                if (!isDefault) {
+                    availableLibraries = availableLibraries.filter(lib => lib !== currentLibrary);
+                    userSettings.availableLibraries = availableLibraries;
+                    currentLibrary = availableLibraries[0];
+                    userSettings.currentLibrary = currentLibrary;
+                }
+                
+                saveSettings(false);
+                loadSettingsFromLocal(); 
+                changeLibrary(); 
+                
+                window.showModal("Success", isDefault ? "Default library successfully emptied." : "Library successfully deleted.");
+
+            } catch (e) {
+                console.error(e);
+                window.showModal("Error", "Error processing request. Some data may remain.");
+            }
+        };
+
+        window.importWords = async () => {
+            if (!userId) return window.showModal("Error", "Not connected.");
+            
+            const text = document.getElementById('importTextarea').value;
+            if (!text.trim()) return window.showModal("Notice", "Please enter content.");
+
+            const lines = text.split('\n');
+            const wordsRef = collection(db, 'artifacts', appId, 'users', userId, currentLibrary);
+
+            const importBtn = document.querySelector('button[onclick="importWords()"]');
+            const originalBtnHtml = importBtn.innerHTML;
+            importBtn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Importing...`;
+            importBtn.disabled = true;
+
+            try {
+                let validWords = [];
+                for (let line of lines) {
+                    let parts = line.split(/[-=,，]/); 
+                    if (parts.length >= 2) {
+                        const word = parts[0].trim();
+                        let pos = '';
+                        let meaning = '';
+
+                        if (parts.length >= 3) {
+                            pos = parts[1].trim();
+                            meaning = parts.slice(2).join('-').trim(); 
+                        } else {
+                            meaning = parts[1].trim();
+                        }
+                        
+                        if (word && meaning && 
+                            !allWords.some(w => w.word.toLowerCase() === word.toLowerCase()) &&
+                            !validWords.some(w => w.word.toLowerCase() === word.toLowerCase())) {
+                            validWords.push({
+                                word: word,
+                                pos: pos, 
+                                meaning: meaning,
+                                status: 'new',
+                                level: 0,
+                                nextReview: Date.now(),
+                                createdAt: Date.now()
+                            });
+                        }
+                    }
+                }
+
+                if (validWords.length === 0) {
+                    window.showModal("Notice", "No valid new words found. Please check your format or words may already exist.");
+                    importBtn.innerHTML = originalBtnHtml;
+                    importBtn.disabled = false;
+                    return;
+                }
+
+                const chunkSize = 500;
+                for (let i = 0; i < validWords.length; i += chunkSize) {
+                    const chunk = validWords.slice(i, i + chunkSize);
+                    const batch = writeBatch(db);
+                    chunk.forEach(wordData => {
+                        const newDocRef = doc(wordsRef); 
+                        batch.set(newDocRef, wordData);
+                    });
+                    await batch.commit();
+                }
+
+                document.getElementById('importTextarea').value = '';
+                window.showModal("Success", `Successfully imported ${validWords.length} new words.`);
+            } catch (error) {
+                console.error("Import error", error);
+                window.showModal("Error", "Network or database error. Please try again.");
+            } finally {
+                importBtn.innerHTML = originalBtnHtml;
+                importBtn.disabled = false;
+            }
+        };
+
+        window.startSession = () => {
+            const now = Date.now();
+            let dueWords = allWords.filter(w => w.status !== 'known' && (!w.nextReview || w.nextReview <= now));
+            dueWords.sort((a, b) => (a.nextReview || 0) - (b.nextReview || 0));
+            sessionWords = dueWords.slice(0, userSettings.maxSessionWords);
+            
+            if (sessionWords.length === 0) return;
+
+            // 新增：保存会话原始快照，用于恢复
+            sessionOriginalStates = sessionWords.map(w => ({
+                id: w.id,
+                status: w.status,
+                level: w.level,
+                nextReview: w.nextReview,
+                lastReviewedAt: w.lastReviewedAt
+            }));
+
+            currentCardIndex = 0;
+            document.getElementById('sessionSetup').classList.add('hidden');
+            document.getElementById('sessionComplete').classList.add('hidden');
+            document.getElementById('flashcardArea').classList.remove('hidden');
+            document.getElementById('flashcardArea').classList.add('flex');
+            
+            renderCurrentCard();
+        };
+
+        // --- 新增：放弃并重置当前会话的功能 ---
+        window.abortAndResetSession = async () => {
+            if (currentCardIndex === 0) {
+                // 如果一张牌都没背，直接退出即可
+                resetSessionUI();
+                return;
+            }
+
+            if (!confirm("Are you sure you want to quit and reset this session? Your progress for the current batch will be undone.")) {
+                return;
+            }
+
+            try {
+                // 利用批处理把这个session中已经被修改过的单词的状态改回快照数据
+                const batch = writeBatch(db);
+                for (let i = 0; i < currentCardIndex; i++) {
+                    const original = sessionOriginalStates[i];
+                    const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, original.id);
+                    batch.update(wordRef, {
+                        status: original.status || 'new',
+                        level: original.level || 0,
+                        nextReview: original.nextReview || Date.now(),
+                        lastReviewedAt: original.lastReviewedAt || null
+                    });
+                }
+                await batch.commit();
+
+                // UI 退出重置
+                const cardInner = document.getElementById('cardInner');
+                cardInner.style.transition = 'none'; 
+                cardInner.classList.remove('rotate-y-180');
+                isFlipped = false;
+                requestAnimationFrame(() => {
+                    cardInner.style.transition = ''; 
+                });
+
+                resetSessionUI();
+                window.showModal("Session Reset", "Your progress for this session has been undone.");
+            } catch (error) {
+                console.error("Error resetting session", error);
+                window.showModal("Error", "Failed to reset session data.");
+            }
+        };
+
+        window.flipCard = () => {
+            if (isFlipped) return; 
+            const cardInner = document.getElementById('cardInner');
+            cardInner.classList.add('rotate-y-180');
+            isFlipped = true;
+            document.getElementById('actionButtons').classList.remove('opacity-50', 'pointer-events-none');
+        };
+
+        window.handleAnswer = async (answer) => {
+            if (!isFlipped || !userId) return;
+            
+            const sessionWord = sessionWords[currentCardIndex];
+            const currentWord = allWords.find(w => w.id === sessionWord.id) || sessionWord;
+            
+            let newStatus = currentWord.status === 'new' ? 'learning' : currentWord.status;
+            let currentLevel = currentWord.level || 0;
+            let nextReviewDate = new Date();
+            
+            if (answer === 'mastered') {
+                newStatus = 'known';
+            } else if (answer === 'forget') {
+                currentLevel = 0;
+                nextReviewDate.setDate(nextReviewDate.getDate() + (parseInt(userSettings.intervalForgot) || 1));
+            } else if (answer === 'know') {
+                if (currentLevel === 0) {
+                    currentLevel = 1;
+                    nextReviewDate.setDate(nextReviewDate.getDate() + (parseInt(userSettings.intervalKnown1) || 6));
+                } else if (currentLevel >= 1) {
+                    currentLevel = 2;
+                    nextReviewDate.setDate(nextReviewDate.getDate() + (parseInt(userSettings.intervalKnown2) || 30));
+                }
+            }
+
+            document.getElementById('actionButtons').classList.add('opacity-50', 'pointer-events-none');
+            
+            const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, currentWord.id);
+            updateDoc(wordRef, {
+                status: newStatus,
+                level: currentLevel,
+                nextReview: nextReviewDate.getTime(),
+                lastReviewedAt: Date.now()
+            }).catch(e => console.error("Update failed", e)); 
+
+            currentCardIndex++;
+            if (currentCardIndex >= sessionWords.length) {
+                setTimeout(endSession, 300);
+            } else {
+                const cardInner = document.getElementById('cardInner');
+                cardInner.style.transition = 'none'; 
+                cardInner.classList.remove('rotate-y-180');
+                isFlipped = false;
+                
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        cardInner.style.transition = ''; 
+                        renderCurrentCard();
+                    });
+                });
+            }
+        };
+
+        function renderCurrentCard() {
+            const wordObj = sessionWords[currentCardIndex];
+            document.getElementById('cardWord').innerText = wordObj.word;
+            document.getElementById('cardWordBack').innerText = wordObj.word;
+            document.getElementById('cardPos').innerText = wordObj.pos ? `[${wordObj.pos}]` : '';
+            document.getElementById('cardMeaning').innerText = wordObj.meaning;
+            
+            document.getElementById('progressText').innerText = `${currentCardIndex + 1} / ${sessionWords.length}`;
+            const percent = ((currentCardIndex) / sessionWords.length) * 100;
+            document.getElementById('progressBar').style.width = `${percent}%`;
+        }
+
+        function endSession() {
+            document.getElementById('flashcardArea').classList.add('hidden');
+            document.getElementById('flashcardArea').classList.remove('flex');
+            document.getElementById('sessionComplete').classList.remove('hidden');
+            document.getElementById('progressBar').style.width = `100%`;
+            updateSessionAvailability();
+        }
+
+        window.resetSessionUI = () => {
+            document.getElementById('flashcardArea').classList.add('hidden');
+            document.getElementById('flashcardArea').classList.remove('flex');
+            document.getElementById('sessionComplete').classList.add('hidden');
+            document.getElementById('sessionSetup').classList.remove('hidden');
+        };
+
+        window.changeLibrary = () => {
+            currentLibrary = document.getElementById('settingLibrary').value;
+            userSettings.currentLibrary = currentLibrary;
+            saveSettings(false); 
+            setupRealtimeListener(); 
+        };
+
+        window.addLibrary = () => {
+            const newLib = document.getElementById('newLibraryName').value.trim();
+            if (!newLib) return;
+            if (/[^a-zA-Z0-9_\-\u4e00-\u9fa5]/.test(newLib)) {
+                return window.showModal("Notice", "Library name can only contain letters, numbers, hyphens, and underscores.");
+            }
+            if (availableLibraries.includes(newLib)) {
+                return window.showModal("Notice", "This library already exists!");
+            }
+
+            availableLibraries.push(newLib);
+            userSettings.availableLibraries = availableLibraries;
+            
+            const select = document.getElementById('settingLibrary');
+            const opt = document.createElement('option');
+            opt.value = newLib;
+            opt.innerText = newLib;
+            select.appendChild(opt);
+            
+            select.value = newLib;
+            document.getElementById('newLibraryName').value = '';
+            changeLibrary();
+        };
+
+        function loadSettingsFromLocal() {
+            const saved = localStorage.getItem('vocabMasterSettings');
+            if (saved) {
+                userSettings = JSON.parse(saved);
+                userSettings.intervalForgot = userSettings.intervalForgot || 1;
+                userSettings.intervalKnown1 = userSettings.intervalKnown1 || 6;
+                userSettings.intervalKnown2 = userSettings.intervalKnown2 || 30;
+                
+                availableLibraries = userSettings.availableLibraries || ['words'];
+                currentLibrary = userSettings.currentLibrary || 'words';
+
+                document.getElementById('settingMaxWords').value = userSettings.maxSessionWords;
+                document.getElementById('maxWordsVal').innerText = userSettings.maxSessionWords;
+                document.getElementById('interval-forgot').value = userSettings.intervalForgot;
+                document.getElementById('interval-known-1').value = userSettings.intervalKnown1;
+                document.getElementById('interval-known-2').value = userSettings.intervalKnown2;
+                
+                const select = document.getElementById('settingLibrary');
+                select.innerHTML = '';
+                availableLibraries.forEach(lib => {
+                    const opt = document.createElement('option');
+                    opt.value = lib;
+                    opt.innerText = lib === 'words' ? 'Default' : lib;
+                    select.appendChild(opt);
+                });
+                select.value = currentLibrary;
+            }
+        }
+
+        window.saveSettings = (showAlert = true) => {
+            userSettings.maxSessionWords = parseInt(document.getElementById('settingMaxWords').value);
+            userSettings.intervalForgot = parseInt(document.getElementById('interval-forgot').value);
+            userSettings.intervalKnown1 = parseInt(document.getElementById('interval-known-1').value);
+            userSettings.intervalKnown2 = parseInt(document.getElementById('interval-known-2').value);
+            userSettings.currentLibrary = currentLibrary;
+            userSettings.availableLibraries = availableLibraries;
+            
+            localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
+            if (showAlert) {
+                window.showModal("Success", "Settings saved successfully. Changes will apply to your next session.");
+            }
+        };
+
+        switchView('learn');
+        initApp();
+
+    </script>
+</body>
+</html>
