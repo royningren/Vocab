@@ -47,7 +47,6 @@
                 </div>
 
                 <div id="flashcardArea" class="hidden h-full flex-col">
-                    <!-- Top Bar with Abort Button and Progress -->
                     <div class="flex justify-between items-center mb-4 text-sm font-medium text-slate-500">
                         <button onclick="abortAndResetSession()" class="text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1 pr-2 border-r border-slate-300" title="Quit and revert session progress">
                             <i class="fa-solid fa-arrow-rotate-left"></i> Quit
@@ -237,7 +236,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, updateDoc, deleteDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, collection, onSnapshot, updateDoc, deleteDoc, writeBatch, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const appId = 'my-vocab-master-app'; 
         
@@ -255,7 +254,7 @@
         
         let allWords = [];
         let sessionWords = [];
-        let sessionOriginalStates = []; // 新增：保存会话开始时单词的快照
+        let sessionOriginalStates = [];
         let currentCardIndex = 0;
         let isFlipped = false;
         let unsubscribeSnapshot = null; 
@@ -270,6 +269,11 @@
             currentLibrary: 'words',
             availableLibraries: ['words']
         };
+
+        // Helper functions for shared public paths
+        const getLibraryCollection = (lib) => collection(db, 'artifacts', appId, 'public', 'data', lib);
+        const getWordDoc = (lib, docId) => doc(db, 'artifacts', appId, 'public', 'data', lib, docId);
+        const getMetaDoc = () => doc(db, 'artifacts', appId, 'public', 'data', 'meta_config', 'libraries');
 
         window.showModal = (title, message) => {
             document.getElementById('modalTitle').innerText = title;
@@ -302,10 +306,10 @@
 
                 await signInAnonymously(auth);
                 userId = auth.currentUser?.uid;
-                if (!userId) throw new Error("Auth failed");
 
                 updateConnectionStatus(true);
                 loadSettingsFromLocal();
+                setupLibrariesMetaListener();
                 setupRealtimeListener(); 
             } catch (error) {
                 console.error(error);
@@ -324,9 +328,40 @@
             }
         }
 
+        // Sync available libraries list across devices
+        function setupLibrariesMetaListener() {
+            const metaRef = getMetaDoc();
+            onSnapshot(metaRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const cloudList = docSnap.data().list;
+                    if (Array.isArray(cloudList) && cloudList.length > 0) {
+                        const merged = Array.from(new Set(['words', ...cloudList, ...availableLibraries]));
+                        availableLibraries = merged;
+                        userSettings.availableLibraries = availableLibraries;
+                        saveSettings(false);
+                        updateLibrarySelectUI();
+                    }
+                } else {
+                    setDoc(metaRef, { list: availableLibraries }, { merge: true }).catch(console.error);
+                }
+            }, (err) => console.log("Meta listener error (safe to ignore):", err));
+        }
+
+        function updateLibrarySelectUI() {
+            const select = document.getElementById('settingLibrary');
+            if (!select) return;
+            select.innerHTML = '';
+            availableLibraries.forEach(lib => {
+                const opt = document.createElement('option');
+                opt.value = lib;
+                opt.innerText = lib === 'words' ? 'Default' : lib;
+                select.appendChild(opt);
+            });
+            select.value = currentLibrary;
+        }
+
+        // Shared realtime listener for the active library
         function setupRealtimeListener() {
-            if (!userId) return;
-            
             if (unsubscribeSnapshot) {
                 unsubscribeSnapshot();
                 allWords = []; 
@@ -334,12 +369,12 @@
                 renderWordList();
             }
 
-            const wordsRef = collection(db, 'artifacts', appId, 'users', userId, currentLibrary);
+            const wordsRef = getLibraryCollection(currentLibrary);
             
             unsubscribeSnapshot = onSnapshot(wordsRef, (snapshot) => {
-                allWords = snapshot.docs.map(doc => ({
-                    id: doc.id,
-                    ...doc.data()
+                allWords = snapshot.docs.map(d => ({
+                    id: d.id,
+                    ...d.data()
                 }));
                 updateDashboardStats();
                 updateSessionAvailability();
@@ -347,7 +382,7 @@
                 
                 const libName = currentLibrary === 'words' ? 'Default Library' : currentLibrary;
                 document.getElementById('currentImportLibName').innerText = libName;
-            }, (error) => console.error(error));
+            }, (error) => console.error("Firestore Error:", error));
         }
 
         function updateDashboardStats() {
@@ -430,7 +465,7 @@
 
         window.markWordMastered = async (docId) => {
             if(!confirm("Mark this word as 'Mastered'? It won't appear in reviews again.")) return;
-            const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, docId);
+            const wordRef = getWordDoc(currentLibrary, docId);
             try {
                 await updateDoc(wordRef, {
                     status: 'known',
@@ -444,7 +479,7 @@
 
         window.resetWordStatus = async (docId) => {
             if(!confirm("Are you sure you want to reset this word's status to 'New'? It will be scheduled for review today.")) return;
-            const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, docId);
+            const wordRef = getWordDoc(currentLibrary, docId);
             try {
                 await updateDoc(wordRef, {
                     status: 'new',
@@ -459,7 +494,7 @@
 
         window.deleteWord = async (docId) => {
             if(!confirm("Are you sure you want to completely delete this word?")) return;
-            const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, docId);
+            const wordRef = getWordDoc(currentLibrary, docId);
             try {
                 await deleteDoc(wordRef);
             } catch (e) {
@@ -497,7 +532,7 @@
                 for(let chunk of chunks) {
                     const batch = writeBatch(db);
                     chunk.forEach(w => {
-                        const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, w.id);
+                        const wordRef = getWordDoc(currentLibrary, w.id);
                         batch.delete(wordRef);
                     });
                     await batch.commit();
@@ -508,6 +543,8 @@
                     userSettings.availableLibraries = availableLibraries;
                     currentLibrary = availableLibraries[0];
                     userSettings.currentLibrary = currentLibrary;
+
+                    setDoc(getMetaDoc(), { list: availableLibraries }, { merge: true }).catch(console.error);
                 }
                 
                 saveSettings(false);
@@ -523,13 +560,11 @@
         };
 
         window.importWords = async () => {
-            if (!userId) return window.showModal("Error", "Not connected.");
-            
             const text = document.getElementById('importTextarea').value;
             if (!text.trim()) return window.showModal("Notice", "Please enter content.");
 
             const lines = text.split('\n');
-            const wordsRef = collection(db, 'artifacts', appId, 'users', userId, currentLibrary);
+            const wordsRef = getLibraryCollection(currentLibrary);
 
             const importBtn = document.querySelector('button[onclick="importWords()"]');
             const originalBtnHtml = importBtn.innerHTML;
@@ -605,7 +640,6 @@
             
             if (sessionWords.length === 0) return;
 
-            // 新增：保存会话原始快照，用于恢复
             sessionOriginalStates = sessionWords.map(w => ({
                 id: w.id,
                 status: w.status,
@@ -623,10 +657,8 @@
             renderCurrentCard();
         };
 
-        // --- 新增：放弃并重置当前会话的功能 ---
         window.abortAndResetSession = async () => {
             if (currentCardIndex === 0) {
-                // 如果一张牌都没背，直接退出即可
                 resetSessionUI();
                 return;
             }
@@ -636,11 +668,10 @@
             }
 
             try {
-                // 利用批处理把这个session中已经被修改过的单词的状态改回快照数据
                 const batch = writeBatch(db);
                 for (let i = 0; i < currentCardIndex; i++) {
                     const original = sessionOriginalStates[i];
-                    const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, original.id);
+                    const wordRef = getWordDoc(currentLibrary, original.id);
                     batch.update(wordRef, {
                         status: original.status || 'new',
                         level: original.level || 0,
@@ -650,7 +681,6 @@
                 }
                 await batch.commit();
 
-                // UI 退出重置
                 const cardInner = document.getElementById('cardInner');
                 cardInner.style.transition = 'none'; 
                 cardInner.classList.remove('rotate-y-180');
@@ -676,7 +706,7 @@
         };
 
         window.handleAnswer = async (answer) => {
-            if (!isFlipped || !userId) return;
+            if (!isFlipped) return;
             
             const sessionWord = sessionWords[currentCardIndex];
             const currentWord = allWords.find(w => w.id === sessionWord.id) || sessionWord;
@@ -702,7 +732,7 @@
 
             document.getElementById('actionButtons').classList.add('opacity-50', 'pointer-events-none');
             
-            const wordRef = doc(db, 'artifacts', appId, 'users', userId, currentLibrary, currentWord.id);
+            const wordRef = getWordDoc(currentLibrary, currentWord.id);
             updateDoc(wordRef, {
                 status: newStatus,
                 level: currentLevel,
@@ -775,12 +805,12 @@
             availableLibraries.push(newLib);
             userSettings.availableLibraries = availableLibraries;
             
-            const select = document.getElementById('settingLibrary');
-            const opt = document.createElement('option');
-            opt.value = newLib;
-            opt.innerText = newLib;
-            select.appendChild(opt);
+            // Sync to Firestore meta
+            setDoc(getMetaDoc(), { list: availableLibraries }, { merge: true }).catch(console.error);
             
+            updateLibrarySelectUI();
+            
+            const select = document.getElementById('settingLibrary');
             select.value = newLib;
             document.getElementById('newLibraryName').value = '';
             changeLibrary();
@@ -803,15 +833,7 @@
                 document.getElementById('interval-known-1').value = userSettings.intervalKnown1;
                 document.getElementById('interval-known-2').value = userSettings.intervalKnown2;
                 
-                const select = document.getElementById('settingLibrary');
-                select.innerHTML = '';
-                availableLibraries.forEach(lib => {
-                    const opt = document.createElement('option');
-                    opt.value = lib;
-                    opt.innerText = lib === 'words' ? 'Default' : lib;
-                    select.appendChild(opt);
-                });
-                select.value = currentLibrary;
+                updateLibrarySelectUI();
             }
         }
 
