@@ -258,10 +258,19 @@
             onSnapshot(metaRef, (docSnap) => {
                 if (docSnap.exists()) {
                     const cloudList = docSnap.data().list;
-                    if (Array.isArray(cloudList) && cloudList.length > 0) {
-                        const merged = Array.from(new Set(['words', ...cloudList, ...availableLibraries]));
-                        availableLibraries = merged;
+                    // Strict update: Do not merge with local availableLibraries anymore!
+                    // This ensures that if a library is deleted from cloud, it is deleted locally.
+                    if (Array.isArray(cloudList)) {
+                        availableLibraries = Array.from(new Set(['words', ...cloudList]));
                         userSettings.availableLibraries = availableLibraries;
+                        
+                        // Safety check: If the currently selected library was deleted by the fetcher app, fallback to 'words'
+                        if (!availableLibraries.includes(currentLibrary)) {
+                            currentLibrary = 'words';
+                            userSettings.currentLibrary = 'words';
+                            setupRealtimeListener(); // Reload data to show default library
+                        }
+                        
                         saveSettings(false);
                         updateLibrarySelectUI();
                     }
