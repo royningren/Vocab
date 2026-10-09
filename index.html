@@ -199,6 +199,7 @@
         const getLibraryCollection = (lib) => collection(db, 'artifacts', appId, 'public', 'data', lib);
         const getWordDoc = (lib, docId) => doc(db, 'artifacts', appId, 'public', 'data', lib, docId);
         const getMetaDoc = () => doc(db, 'artifacts', appId, 'public', 'data', 'meta_config', 'libraries');
+        const getSettingsDoc = () => doc(db, 'artifacts', appId, 'public', 'data', 'meta_config', 'app_settings');
 
         window.showModal = (title, message) => {
             document.getElementById('modalTitle').innerText = title;
@@ -233,8 +234,8 @@
                 userId = auth.currentUser?.uid;
 
                 updateConnectionStatus(true);
-                loadSettingsFromLocal();
                 setupLibrariesMetaListener();
+                setupSettingsListener(); 
                 setupRealtimeListener(); 
             } catch (error) {
                 console.error(error);
@@ -291,6 +292,37 @@
                 select.appendChild(opt);
             });
             select.value = currentLibrary;
+        }
+
+        function setupSettingsListener() {
+            const settingsRef = getSettingsDoc();
+            onSnapshot(settingsRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const data = docSnap.data();
+                    
+                    // 检查是否在另一台设备上切换了词库
+                    let libraryChanged = false;
+                    if (data.currentLibrary && data.currentLibrary !== currentLibrary && availableLibraries.includes(data.currentLibrary)) {
+                        currentLibrary = data.currentLibrary;
+                        libraryChanged = true;
+                    }
+
+                    userSettings.maxSessionWords = data.maxSessionWords || 20;
+                    userSettings.currentLibrary = data.currentLibrary || 'words';
+
+                    // 更新 UI 界面
+                    document.getElementById('settingMaxWords').value = userSettings.maxSessionWords;
+                    document.getElementById('maxWordsVal').innerText = userSettings.maxSessionWords;
+                    
+                    const select = document.getElementById('settingLibrary');
+                    if (select) select.value = currentLibrary;
+
+                    // 如果在手机上切换了词库，电脑端会自动重新加载该新词库的单词
+                    if (libraryChanged) {
+                        setupRealtimeListener();
+                    }
+                }
+            });
         }
 
         function setupRealtimeListener() {
@@ -511,33 +543,22 @@
             setupRealtimeListener(); 
         };
 
-        function loadSettingsFromLocal() {
-            const saved = localStorage.getItem('vocabMasterSettings');
-            if (saved) {
-                userSettings = JSON.parse(saved);
-                
-                // Ensure maxSessionWords is a multiple of 10 and max 100
-                let safeMax = parseInt(userSettings.maxSessionWords) || 20;
-                safeMax = Math.min(100, Math.max(10, Math.round(safeMax / 10) * 10));
-                
-                availableLibraries = userSettings.availableLibraries || ['words'];
-                currentLibrary = userSettings.currentLibrary || 'words';
-
-                document.getElementById('settingMaxWords').value = safeMax;
-                document.getElementById('maxWordsVal').innerText = safeMax;
-                
-                updateLibrarySelectUI();
-            }
-        }
-
-        window.saveSettings = (showAlert = true) => {
+        window.saveSettings = async (showAlert = true) => {
             userSettings.maxSessionWords = parseInt(document.getElementById('settingMaxWords').value);
             userSettings.currentLibrary = currentLibrary;
-            userSettings.availableLibraries = availableLibraries;
             
-            localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
-            if (showAlert) {
-                window.showModal("Success", "Settings saved successfully. Changes will apply to your next session.");
+            try {
+                await setDoc(getSettingsDoc(), {
+                    maxSessionWords: userSettings.maxSessionWords,
+                    currentLibrary: userSettings.currentLibrary
+                }, { merge: true });
+                
+                if (showAlert) {
+                    window.showModal("Success", "Settings saved globally. Your phone and computer are now fully synced!");
+                }
+            } catch (e) {
+                console.error("Error saving settings", e);
+                if (showAlert) window.showModal("Error", "Failed to sync settings to cloud.");
             }
         };
 
