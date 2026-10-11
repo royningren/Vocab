@@ -80,7 +80,7 @@
                 <!-- Flashcard Area (Shared for both modes) -->
                 <div id="flashcardArea" class="hidden h-full flex-col">
                     <div class="flex justify-between items-center mb-4 text-sm font-medium text-slate-500">
-                        <button onclick="abortAndResetSession()" class="text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1 pr-2 border-r border-slate-300" title="Quit and revert session progress">
+                        <button onclick="abortAndResetSession()" class="text-slate-400 hover:text-rose-500 transition-colors flex items-center gap-1 pr-2 border-r border-slate-300" title="Quit and save progress">
                             <i class="fa-solid fa-arrow-rotate-left"></i> Quit
                         </button>
                         <div class="flex-1 mx-3 bg-slate-200 rounded-full h-2.5 overflow-hidden">
@@ -159,28 +159,46 @@
                     </div>
                 </div>
             </div>
-
         </main>
 
-        <!-- Bottom Nav: 适配底部安全区域 -->
-        <nav class="bg-white border-t border-slate-200 flex pb-[env(safe-area-inset-bottom)] pt-1 px-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 shrink-0">
-            <button onclick="switchView('learn')" id="nav-learn" class="nav-btn flex-1 flex flex-col items-center py-1.5 text-indigo-600 transition-colors">
-                <i class="fa-solid fa-book-open text-lg mb-0.5"></i>
-                <span class="text-[10px] font-bold">Learn</span>
+        <!-- Bottom Nav -->
+        <nav class="bg-white border-t border-slate-200 flex justify-around pb-[env(safe-area-inset-bottom)] pt-2 px-2 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-10 shrink-0">
+            <button onclick="switchView('learn')" id="nav-learn" class="nav-btn flex-1 flex flex-col items-center py-2 text-indigo-600 transition-colors">
+                <i class="fa-solid fa-book-open text-xl mb-1"></i>
+                <span class="text-[10px] font-medium">Learn</span>
             </button>
-            <button onclick="switchView('settings')" id="nav-settings" class="nav-btn flex-1 flex flex-col items-center py-1.5 text-slate-400 hover:text-indigo-500 transition-colors">
-                <i class="fa-solid fa-gear text-lg mb-0.5"></i>
-                <span class="text-[10px] font-bold">Settings</span>
+            <button onclick="switchView('settings')" id="nav-settings" class="nav-btn flex-1 flex flex-col items-center py-2 text-slate-400 hover:text-indigo-500 transition-colors">
+                <i class="fa-solid fa-gear text-xl mb-1"></i>
+                <span class="text-[10px] font-medium">Settings</span>
             </button>
         </nav>
     </div>
 
-    <!-- Modal -->
+    <!-- Custom Modal for Alerts -->
     <div id="customModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl transform scale-95 transition-transform" id="modalContent">
-            <h3 class="text-xl font-black text-slate-800 mb-2" id="modalTitle">Notice</h3>
-            <p class="text-slate-600 mb-6 text-sm font-medium leading-relaxed" id="modalMessage">Message content</p>
-            <button onclick="closeModal()" class="w-full bg-slate-800 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform">OK</button>
+            <h3 class="text-lg font-bold mb-2" id="modalTitle">Notice</h3>
+            <p class="text-slate-600 mb-6 text-sm" id="modalMessage">Message content</p>
+            <button onclick="closeModal()" class="w-full bg-indigo-600 text-white font-bold py-3 rounded-xl active:scale-95 transition-transform text-sm">OK</button>
+        </div>
+    </div>
+
+    <!-- Quit Session Modal -->
+    <div id="quitModal" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl transform scale-95 transition-transform" id="quitModalContent">
+            <h3 class="text-xl font-bold text-slate-800 mb-2">End Session</h3>
+            <p class="text-slate-600 mb-6 text-sm font-medium">Are you sure you want to quit early?<br>Choose how to handle the words you just reviewed:</p>
+            <div class="flex flex-col gap-3">
+                <button onclick="executeQuit(true)" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl shadow-md active:scale-95 transition-transform text-sm">
+                    Save progress and quit
+                </button>
+                <button onclick="executeQuit(false)" class="w-full bg-rose-100 text-rose-700 hover:bg-rose-200 font-bold py-3 rounded-xl shadow-sm active:scale-95 transition-transform text-sm">
+                    Discard progress (Undo reviews)
+                </button>
+                <button onclick="closeQuitModal()" class="w-full bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold py-3 rounded-xl shadow-sm active:scale-95 transition-transform text-sm">
+                    Cancel (Continue learning)
+                </button>
+            </div>
         </div>
     </div>
 
@@ -190,7 +208,6 @@
         import { getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const appId = 'my-vocab-master-app'; 
-        
         const firebaseConfig = {
             apiKey: "AIzaSyDijMD-M3JySv_6aXjEEsYWDUY2dwhs7sI",
             authDomain: "vocab-9955e.firebaseapp.com",
@@ -202,14 +219,16 @@
         };
 
         let app, auth, db, userId;
+        let unsubscribeSnapshot = null;
         
+        // App State
         let allWords = [];
         let sessionWords = [];
-        let sessionOriginalStates = [];
+        let sessionOriginalStates = []; // For rollback
         let currentCardIndex = 0;
         let isFlipped = false;
-        let unsubscribeSnapshot = null; 
         
+        // Settings State
         let currentLibrary = 'words';
         let availableLibraries = ['words'];
         let userSettings = {
@@ -221,13 +240,13 @@
         const getWordDoc = (lib, docId) => doc(db, 'artifacts', appId, 'public', 'data', lib, docId);
         const getMetaDoc = () => doc(db, 'artifacts', appId, 'public', 'data', 'meta_config', 'libraries');
 
-        // UI Helpers
         window.showModal = (title, message) => {
             document.getElementById('modalTitle').innerText = title;
             document.getElementById('modalMessage').innerText = message;
             document.getElementById('customModal').classList.remove('hidden');
             setTimeout(() => document.getElementById('modalContent').classList.remove('scale-95'), 10);
         };
+        
         window.closeModal = () => {
             document.getElementById('customModal').classList.add('hidden');
             document.getElementById('modalContent').classList.add('scale-95');
@@ -251,7 +270,6 @@
             localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
         };
 
-        // Core App Initialization
         async function initApp() {
             try {
                 app = initializeApp(firebaseConfig);
@@ -274,15 +292,14 @@
         function updateConnectionStatus(isConnected) {
             const statusEl = document.getElementById('connectionStatus');
             if (isConnected) {
-                statusEl.innerHTML = `<div class="w-2 h-2 bg-emerald-400 rounded-full"></div> Connected`;
+                statusEl.innerHTML = `<div class="w-1.5 h-1.5 bg-emerald-400 rounded-full"></div> Connected`;
                 statusEl.classList.replace('bg-indigo-500', 'bg-slate-800');
             } else {
-                statusEl.innerHTML = `<div class="w-2 h-2 bg-rose-400 rounded-full"></div> Offline`;
+                statusEl.innerHTML = `<div class="w-1.5 h-1.5 bg-rose-400 rounded-full"></div> Offline`;
                 statusEl.classList.replace('bg-indigo-500', 'bg-rose-600');
             }
         }
 
-        // Library Sync
         function setupLibrariesMetaListener() {
             const metaRef = getMetaDoc();
             onSnapshot(metaRef, (docSnap) => {
@@ -291,6 +308,7 @@
                     if (Array.isArray(cloudList)) {
                         availableLibraries = Array.from(new Set(['words', ...cloudList]));
                         
+                        // Fallback if current library was deleted
                         if (!availableLibraries.includes(currentLibrary)) {
                             currentLibrary = 'words';
                             userSettings.currentLibrary = 'words';
@@ -302,7 +320,7 @@
                 } else {
                     setDoc(metaRef, { list: availableLibraries }, { merge: true }).catch(console.error);
                 }
-            }, (err) => console.log("Meta listener error (safe to ignore):", err));
+            }, (err) => console.log("Meta listener error:", err));
         }
 
         function updateLibrarySelectUI() {
@@ -340,16 +358,13 @@
             document.getElementById('statKnownWords').innerText = knownCount;
         }
 
-        // --- DASHBOARD LOGIC (New vs Review) ---
         function updateSessionAvailability() {
             const now = Date.now();
             
-            // "New Words" are words that have never been reviewed (lastReviewedAt is empty)
             const newWords = allWords.filter(w => !w.lastReviewedAt);
-            // "Review Words" are words that were reviewed before AND the midnight deadline has passed
             const reviewWords = allWords.filter(w => w.lastReviewedAt && w.nextReview <= now);
             
-            // Update New Words Card
+            // New Words UI Update
             document.getElementById('newWordsText').innerText = newWords.length;
             const btnNew = document.getElementById('btnStartNew');
             if (newWords.length === 0) {
@@ -360,7 +375,7 @@
                 btnNew.innerHTML = `<i class="fa-solid fa-play"></i> Start Learning`;
             }
 
-            // Update Review Card
+            // Review UI Update
             document.getElementById('reviewWordsText').innerText = reviewWords.length;
             const btnReview = document.getElementById('btnStartReview');
             if (reviewWords.length === 0) {
@@ -372,40 +387,11 @@
             }
         }
 
-        window.startNewSession = () => {
-            let newWords = allWords.filter(w => !w.lastReviewedAt);
-            // Sort by creation time so you learn older imports first
-            newWords.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
-            
-            const maxNew = parseInt(document.getElementById('settingMaxNewWords').value) || 20;
-            sessionWords = newWords.slice(0, maxNew);
-            
-            if (sessionWords.length > 0) initFlashcardInterface();
-        };
+        // Shared function to actually launch the flashcard UI
+        function launchSession() {
+            if (sessionWords.length === 0) return;
 
-        window.startReviewSession = () => {
-            const now = Date.now();
-            let dueWords = allWords.filter(w => w.lastReviewedAt && w.nextReview <= now);
-            
-            // STRICT SORTING LOGIC:
-            // 1. Priority: Known (Level > 0) comes before Unknown (Level 0)
-            // 2. Secondary: Chronological order of their previous review time (lastReviewedAt)
-            dueWords.sort((a, b) => {
-                const isAKnown = (a.level || 0) > 0 ? 1 : 0;
-                const isBKnown = (b.level || 0) > 0 ? 1 : 0;
-                
-                if (isAKnown !== isBKnown) {
-                    return isBKnown - isAKnown; // 1 (Known) comes before 0 (Unknown)
-                }
-                return (a.lastReviewedAt || 0) - (b.lastReviewedAt || 0); // Older review first
-            });
-
-            // Review loads all due words for the day
-            sessionWords = dueWords; 
-            if (sessionWords.length > 0) initFlashcardInterface();
-        };
-
-        function initFlashcardInterface() {
+            // Take a snapshot of original states for potential rollback
             sessionOriginalStates = sessionWords.map(w => ({
                 id: w.id,
                 status: w.status,
@@ -423,38 +409,82 @@
             renderCurrentCard();
         }
 
-        window.abortAndResetSession = async () => {
+        window.startNewSession = () => {
+            let newWords = allWords.filter(w => !w.lastReviewedAt);
+            newWords.sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)); // Oldest first
+            
+            const maxNew = parseInt(document.getElementById('settingMaxNewWords').value) || 20;
+            sessionWords = newWords.slice(0, maxNew);
+            
+            launchSession();
+        };
+
+        window.startReviewSession = () => {
+            const now = Date.now();
+            let dueWords = allWords.filter(w => w.lastReviewedAt && w.nextReview <= now);
+            
+            // SORTING PRIORITY: Known (Level > 0) first, Unknown (Level 0) last.
+            // Tie-breaker: Chronological by when it was last reviewed.
+            dueWords.sort((a, b) => {
+                const isAKnown = (a.level || 0) > 0 ? 1 : 0;
+                const isBKnown = (b.level || 0) > 0 ? 1 : 0;
+                if (isAKnown !== isBKnown) return isBKnown - isAKnown;
+                return (a.lastReviewedAt || 0) - (b.lastReviewedAt || 0);
+            });
+
+            // For review, we can just load all due words (or implement a cap if desired)
+            // Currently loading up to 100 max per review session to prevent browser crash
+            sessionWords = dueWords.slice(0, 100); 
+            
+            launchSession();
+        }
+
+        window.abortAndResetSession = () => {
             if (currentCardIndex === 0) {
                 resetSessionUI();
                 return;
             }
+            document.getElementById('quitModal').classList.remove('hidden');
+            setTimeout(() => document.getElementById('quitModalContent').classList.remove('scale-95'), 10);
+        };
 
-            if (!confirm("Are you sure you want to quit? Your progress for this specific batch will be undone.")) return;
+        window.closeQuitModal = () => {
+            document.getElementById('quitModal').classList.add('hidden');
+            document.getElementById('quitModalContent').classList.add('scale-95');
+        };
 
-            try {
+        window.executeQuit = async (saveProgress) => {
+            closeQuitModal();
+
+            if (!saveProgress) {
+                // Execute rollback using the snapshot
                 const batch = writeBatch(db);
+                const wordsRef = getLibraryCollection(currentLibrary);
+                
                 for (let i = 0; i < currentCardIndex; i++) {
-                    const original = sessionOriginalStates[i];
-                    const wordRef = getWordDoc(currentLibrary, original.id);
-                    batch.update(wordRef, {
-                        status: original.status || 'unknown',
-                        level: original.level || 0,
-                        nextReview: original.nextReview || Date.now(),
-                        lastReviewedAt: original.lastReviewedAt || null
-                    });
+                    const wordId = sessionWords[i].id;
+                    const originalState = sessionOriginalStates.find(s => s.id === wordId);
+                    if (originalState) {
+                        const docRef = doc(wordsRef, wordId);
+                        batch.update(docRef, {
+                            status: originalState.status,
+                            level: originalState.level,
+                            nextReview: originalState.nextReview || null,
+                            lastReviewedAt: originalState.lastReviewedAt || null
+                        });
+                    }
                 }
-                await batch.commit();
-
-                const cardInner = document.getElementById('cardInner');
-                cardInner.style.transition = 'none'; 
-                cardInner.classList.remove('rotate-y-180');
-                isFlipped = false;
-                requestAnimationFrame(() => cardInner.style.transition = '');
-
-                resetSessionUI();
-            } catch (error) {
-                console.error("Error resetting session", error);
+                await batch.commit().catch(e => console.error("Rollback failed", e));
             }
+
+            // Restore card UI and exit
+            const cardInner = document.getElementById('cardInner');
+            cardInner.style.transition = 'none'; 
+            cardInner.classList.remove('rotate-y-180');
+            isFlipped = false;
+            requestAnimationFrame(() => cardInner.style.transition = '');
+
+            resetSessionUI();
         };
 
         window.flipCard = () => {
@@ -465,11 +495,11 @@
             document.getElementById('actionButtons').classList.remove('opacity-50', 'pointer-events-none');
         };
 
-        // Get EXACT midnight timestamp of the target day
+        // Utility: Get EXACT midnight timestamp of the target day
         function getMidnightOf(daysToAdd) {
             let d = new Date();
             d.setDate(d.getDate() + daysToAdd);
-            d.setHours(0, 0, 0, 0); // Sets to 12:00:00 AM strictly
+            d.setHours(0, 0, 0, 0); 
             return d.getTime();
         }
 
