@@ -295,7 +295,8 @@
                 if (docSnap.exists() && docSnap.data().libraries) {
                     const cloudList = docSnap.data().libraries;
                     if (Array.isArray(cloudList)) {
-                        availableLibraries = Array.from(new Set([...cloudList, 'Default']));
+                        // 合并云端已有的列表和本地列表，避免云端手动加的被冲掉
+                        availableLibraries = Array.from(new Set([...cloudList, ...availableLibraries, 'Default']));
                         
                         // Fallback if current library was deleted
                         if (!availableLibraries.includes(currentLibrary)) {
