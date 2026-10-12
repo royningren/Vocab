@@ -64,12 +64,9 @@
                         <div class="w-full mb-3 text-left shrink-0">
                             <div class="flex justify-between items-center mb-1">
                                 <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Session Size</label>
-                                <div class="flex items-center gap-2">
-                                    <span id="maxNewWordsVal" class="font-black text-emerald-600 text-base">20</span>
-                                    <button id="btnConfirmSize" onclick="confirmSessionSize()" class="hidden bg-emerald-500 text-white w-5 h-5 rounded-full flex items-center justify-center shadow-sm active:scale-95 transition-all" title="Confirm Size"><i class="fa-solid fa-check text-[10px]"></i></button>
-                                </div>
+                                <span id="maxNewWordsVal" class="font-black text-emerald-600 text-base">20</span>
                             </div>
-                            <input type="range" id="settingMaxNewWords" min="10" max="100" step="10" value="20" class="w-full accent-emerald-500 h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer" oninput="handleSliderChange(this.value)">
+                            <input type="range" id="settingMaxNewWords" min="10" max="100" step="10" value="20" class="w-full accent-emerald-500 h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer" oninput="updateNewWordsSlider(this.value)">
                         </div>
 
                         <button onclick="startNewSession()" id="btnStartNew" class="w-full mt-auto bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 text-sm rounded-xl shadow-md transition-transform active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 shrink-0">
@@ -206,10 +203,10 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-vocab-master-app'; 
+        const appId = 'my-vocab-master-app'; 
         const firebaseConfig = {
             apiKey: "AIzaSyDijMD-M3JySv_6aXjEEsYWDUY2dwhs7sI",
             authDomain: "vocab-9955e.firebaseapp.com",
@@ -267,28 +264,10 @@
             document.getElementById(`nav-${viewName}`).classList.remove('text-slate-400');
         };
 
-        window.handleSliderChange = (val) => {
+        window.updateNewWordsSlider = (val) => {
             document.getElementById('maxNewWordsVal').innerText = val;
-            if (parseInt(val) !== userSettings.maxNewWords) {
-                document.getElementById('btnConfirmSize').classList.remove('hidden');
-            } else {
-                document.getElementById('btnConfirmSize').classList.add('hidden');
-            }
-        };
-
-        window.confirmSessionSize = () => {
-            const val = parseInt(document.getElementById('settingMaxNewWords').value);
-            userSettings.maxNewWords = val;
+            userSettings.maxNewWords = parseInt(val);
             localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
-            
-            // Hide confirmation button
-            document.getElementById('btnConfirmSize').classList.add('hidden');
-            
-            // Sync setting to Cloud for cross-device consistency
-            if (userId) {
-                const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'userSettings');
-                setDoc(settingsRef, { maxNewWords: val }, { merge: true }).catch(console.error);
-            }
         };
 
         async function initApp() {
@@ -297,39 +276,17 @@
                 auth = getAuth(app);
                 db = getFirestore(app);
 
-                // Authenticate to sync user-specific settings across devices
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
+                await signInAnonymously(auth);
                 userId = auth.currentUser?.uid;
 
                 updateConnectionStatus(true);
                 loadSettingsFromLocal();
-                setupUserSettingsListener();
                 setupLibrariesMetaListener();
                 setupRealtimeListener(); 
             } catch (error) {
                 console.error(error);
                 updateConnectionStatus(false);
             }
-        }
-
-        function setupUserSettingsListener() {
-            if (!userId) return;
-            const settingsRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'userSettings');
-            
-            onSnapshot(settingsRef, (docSnap) => {
-                if (docSnap.exists() && docSnap.data().maxNewWords) {
-                    const cloudMax = docSnap.data().maxNewWords;
-                    userSettings.maxNewWords = cloudMax;
-                    document.getElementById('settingMaxNewWords').value = cloudMax;
-                    document.getElementById('maxNewWordsVal').innerText = cloudMax;
-                    document.getElementById('btnConfirmSize').classList.add('hidden');
-                    localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
-                }
-            }, (error) => console.error("Settings listener error:", error));
         }
 
         function updateConnectionStatus(isConnected) {
