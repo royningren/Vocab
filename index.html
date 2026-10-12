@@ -46,8 +46,16 @@
                             <i class="fa-solid fa-clock-rotate-left text-xl"></i>
                         </div>
                         <h2 class="text-base font-black text-slate-800">Review</h2>
-                        <p class="text-slate-500 text-[10px] mb-3 font-medium shrink-0"><span id="reviewWordsText" class="text-amber-600 font-bold text-sm">0</span> due today</p>
+                        <p class="text-slate-500 text-[10px] mb-2 font-medium shrink-0"><span id="reviewWordsText" class="text-amber-600 font-bold text-sm">0</span> due today</p>
                         
+                        <div class="w-full mb-3 text-left shrink-0">
+                            <div class="flex justify-between items-center mb-1">
+                                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Session Size</label>
+                                <span id="maxReviewWordsVal" class="font-black text-amber-600 text-base">50</span>
+                            </div>
+                            <input type="range" id="settingMaxReviewWords" min="10" max="100" step="10" value="50" class="w-full accent-amber-500 h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer" oninput="updateReviewWordsSlider(this.value)">
+                        </div>
+
                         <button onclick="startReviewSession()" id="btnStartReview" class="w-full mt-auto bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 text-sm rounded-xl shadow-md transition-transform active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 shrink-0">
                             <i class="fa-solid fa-rotate-left"></i> Start Review
                         </button>
@@ -232,6 +240,7 @@
         let availableLibraries = ['Default'];
         let userSettings = {
             maxNewWords: 20,
+            maxReviewWords: 50,
             currentLibrary: 'Default'
         };
 
@@ -267,6 +276,12 @@
         window.updateNewWordsSlider = (val) => {
             document.getElementById('maxNewWordsVal').innerText = val;
             userSettings.maxNewWords = parseInt(val);
+            localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
+        };
+
+        window.updateReviewWordsSlider = (val) => {
+            document.getElementById('maxReviewWordsVal').innerText = val;
+            userSettings.maxReviewWords = parseInt(val);
             localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
         };
 
@@ -464,7 +479,8 @@
                 return timeA - timeB;
             });
 
-            sessionWords = dueWords.slice(0, 100); // Batches of 100
+            const maxReview = parseInt(document.getElementById('settingMaxReviewWords').value) || 50;
+            sessionWords = dueWords.slice(0, maxReview);
             launchSession();
         }
 
@@ -608,13 +624,19 @@
             if (saved) {
                 userSettings = JSON.parse(saved);
                 
-                let safeMax = parseInt(userSettings.maxNewWords) || 20;
-                safeMax = Math.min(100, Math.max(10, Math.round(safeMax / 10) * 10));
+                let safeMaxNew = parseInt(userSettings.maxNewWords) || 20;
+                safeMaxNew = Math.min(100, Math.max(10, Math.round(safeMaxNew / 10) * 10));
+
+                let safeMaxReview = parseInt(userSettings.maxReviewWords) || 50;
+                safeMaxReview = Math.min(100, Math.max(10, Math.round(safeMaxReview / 10) * 10));
                 
                 currentLibrary = userSettings.currentLibrary || 'Default';
 
-                document.getElementById('settingMaxNewWords').value = safeMax;
-                document.getElementById('maxNewWordsVal').innerText = safeMax;
+                document.getElementById('settingMaxNewWords').value = safeMaxNew;
+                document.getElementById('maxNewWordsVal').innerText = safeMaxNew;
+
+                document.getElementById('settingMaxReviewWords').value = safeMaxReview;
+                document.getElementById('maxReviewWordsVal').innerText = safeMaxReview;
                 
                 updateLibrarySelectUI();
             }
