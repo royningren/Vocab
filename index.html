@@ -41,43 +41,31 @@
                 <div id="sessionSetup" class="h-full w-full flex flex-col gap-3 justify-between">
                     
                     <!-- Review Card -->
-                    <div class="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center p-4 text-center">
-                        <div class="w-10 h-10 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mb-1 shrink-0">
+                    <div class="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-evenly p-4 text-center">
+                        <div class="w-12 h-12 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center shrink-0 shadow-sm">
                             <i class="fa-solid fa-clock-rotate-left text-xl"></i>
                         </div>
-                        <h2 class="text-base font-black text-slate-800">Review</h2>
-                        <p class="text-slate-500 text-[10px] mb-2 font-medium shrink-0"><span id="reviewWordsText" class="text-amber-600 font-bold text-sm">0</span> due today</p>
-                        
-                        <div class="w-full mb-3 text-left shrink-0">
-                            <div class="flex justify-between items-center mb-1">
-                                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Session Size</label>
-                                <span id="maxReviewWordsVal" class="font-black text-amber-600 text-base">50</span>
-                            </div>
-                            <input type="range" id="settingMaxReviewWords" min="10" max="100" step="10" value="50" class="w-full accent-amber-500 h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer" oninput="updateReviewWordsSlider(this.value)">
+                        <div>
+                            <h2 class="text-lg font-black text-slate-800 mb-1">Review</h2>
+                            <p class="text-slate-500 text-xs font-medium"><span id="reviewWordsText" class="text-amber-600 font-bold text-sm">0</span> due today</p>
                         </div>
-
-                        <button onclick="startReviewSession()" id="btnStartReview" class="w-full mt-auto bg-amber-500 hover:bg-amber-600 text-white font-bold py-2.5 text-sm rounded-xl shadow-md transition-transform active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 shrink-0">
+                        
+                        <button onclick="startReviewSession()" id="btnStartReview" class="w-full bg-amber-500 hover:bg-amber-600 text-white font-bold py-3 text-sm rounded-xl shadow-md transition-transform active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 shrink-0">
                             <i class="fa-solid fa-rotate-left"></i> Start Review
                         </button>
                     </div>
 
                     <!-- New Words Card -->
-                    <div class="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-center p-4 text-center">
-                        <div class="w-10 h-10 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center mb-1 shrink-0">
+                    <div class="flex-1 bg-white rounded-2xl shadow-sm border border-slate-200 flex flex-col items-center justify-evenly p-4 text-center">
+                        <div class="w-12 h-12 bg-emerald-100 text-emerald-500 rounded-full flex items-center justify-center shrink-0 shadow-sm">
                             <i class="fa-solid fa-seedling text-xl"></i>
                         </div>
-                        <h2 class="text-base font-black text-slate-800">New Words</h2>
-                        <p class="text-slate-500 text-[10px] mb-2 font-medium shrink-0"><span id="newWordsText" class="text-emerald-600 font-bold text-sm">0</span> untouched</p>
-                        
-                        <div class="w-full mb-3 text-left shrink-0">
-                            <div class="flex justify-between items-center mb-1">
-                                <label class="text-[9px] font-bold text-slate-400 uppercase tracking-widest">Session Size</label>
-                                <span id="maxNewWordsVal" class="font-black text-emerald-600 text-base">20</span>
-                            </div>
-                            <input type="range" id="settingMaxNewWords" min="10" max="100" step="10" value="20" class="w-full accent-emerald-500 h-1.5 bg-slate-100 rounded-lg appearance-none cursor-pointer" oninput="updateNewWordsSlider(this.value)">
+                        <div>
+                            <h2 class="text-lg font-black text-slate-800 mb-1">New Words</h2>
+                            <p class="text-slate-500 text-xs font-medium"><span id="newWordsText" class="text-emerald-600 font-bold text-sm">0</span> untouched</p>
                         </div>
 
-                        <button onclick="startNewSession()" id="btnStartNew" class="w-full mt-auto bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2.5 text-sm rounded-xl shadow-md transition-transform active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 shrink-0">
+                        <button onclick="startNewSession()" id="btnStartNew" class="w-full bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-3 text-sm rounded-xl shadow-md transition-transform active:scale-95 disabled:opacity-50 disabled:active:scale-100 flex items-center justify-center gap-2 shrink-0">
                             <i class="fa-solid fa-play"></i> Start Learning
                         </button>
                     </div>
@@ -239,8 +227,6 @@
         let currentLibrary = 'Default';
         let availableLibraries = ['Default'];
         let userSettings = {
-            maxNewWords: 20,
-            maxReviewWords: 50,
             currentLibrary: 'Default'
         };
 
@@ -271,18 +257,6 @@
             });
             document.getElementById(`nav-${viewName}`).classList.add('text-indigo-600');
             document.getElementById(`nav-${viewName}`).classList.remove('text-slate-400');
-        };
-
-        window.updateNewWordsSlider = (val) => {
-            document.getElementById('maxNewWordsVal').innerText = val;
-            userSettings.maxNewWords = parseInt(val);
-            localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
-        };
-
-        window.updateReviewWordsSlider = (val) => {
-            document.getElementById('maxReviewWordsVal').innerText = val;
-            userSettings.maxReviewWords = parseInt(val);
-            localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
         };
 
         async function initApp() {
@@ -451,9 +425,7 @@
             let newWords = allWords.filter(w => !w.lastReviewedAt);
             newWords.sort((a, b) => (a.importedAt || 0) - (b.importedAt || 0)); 
             
-            const maxNew = parseInt(document.getElementById('settingMaxNewWords').value) || 20;
-            sessionWords = newWords.slice(0, maxNew);
-            
+            sessionWords = newWords.slice(0, 100); // 默认每次100个新词
             launchSession();
         };
 
@@ -461,9 +433,6 @@
             let dueWords = getDueReviewWords();
             
             // PRIORITY SORTING (Matching Backend Settings)
-            // Priority 1: Known >= 2 times (30 days)
-            // Priority 2: Known < 2 times (6 days)
-            // Priority 3: Unknown (1 day)
             dueWords.forEach(w => {
                 const knownCount = w.knownCount !== undefined ? w.knownCount : (w.status === 'known' ? 1 : 0);
                 if (w.status === 'unknown') w.priority = 3;
@@ -471,7 +440,6 @@
                 else w.priority = 2;
             });
 
-            // Sort by priority, then oldest reviewed first
             dueWords.sort((a, b) => {
                 if (a.priority !== b.priority) return a.priority - b.priority;
                 const timeA = a.lastReviewedAt ? new Date(a.lastReviewedAt).getTime() : 0;
@@ -479,8 +447,7 @@
                 return timeA - timeB;
             });
 
-            const maxReview = parseInt(document.getElementById('settingMaxReviewWords').value) || 50;
-            sessionWords = dueWords.slice(0, maxReview);
+            sessionWords = dueWords.slice(0, 100); // 默认最多100个复习词
             launchSession();
         }
 
@@ -547,7 +514,6 @@
             let newStatus = 'unknown';
             let newKnownCount = 0;
             
-            // Database Logic synced with backend
             if (answer === 'unknown') {
                 newStatus = 'unknown';
                 newKnownCount = 0;
@@ -623,21 +589,7 @@
             const saved = localStorage.getItem('vocabMasterSettings');
             if (saved) {
                 userSettings = JSON.parse(saved);
-                
-                let safeMaxNew = parseInt(userSettings.maxNewWords) || 20;
-                safeMaxNew = Math.min(100, Math.max(10, Math.round(safeMaxNew / 10) * 10));
-
-                let safeMaxReview = parseInt(userSettings.maxReviewWords) || 50;
-                safeMaxReview = Math.min(100, Math.max(10, Math.round(safeMaxReview / 10) * 10));
-                
                 currentLibrary = userSettings.currentLibrary || 'Default';
-
-                document.getElementById('settingMaxNewWords').value = safeMaxNew;
-                document.getElementById('maxNewWordsVal').innerText = safeMaxNew;
-
-                document.getElementById('settingMaxReviewWords').value = safeMaxReview;
-                document.getElementById('maxReviewWordsVal').innerText = safeMaxReview;
-                
                 updateLibrarySelectUI();
             }
         }
