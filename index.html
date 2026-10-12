@@ -136,7 +136,7 @@
                         <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3 border-b border-slate-100 pb-2">Library Overview</label>
                         <div class="flex items-center gap-2 mb-5">
                             <select id="settingLibrary" class="flex-1 border-2 border-slate-200 rounded-xl p-3 bg-slate-50 text-sm focus:border-indigo-500 focus:outline-none font-bold text-slate-700" onchange="changeLibrary()">
-                                <option value="Default">Default</option>
+                                <!-- Options will be dynamically populated -->
                             </select>
                         </div>
                         
@@ -200,7 +200,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, setDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const appId = 'my-vocab-master-app'; 
         const firebaseConfig = {
@@ -224,15 +224,14 @@
         let isFlipped = false;
         
         // Settings State
-        let currentLibrary = 'Default';
-        let availableLibraries = ['Default'];
+        let currentLibrary = '';
+        let availableLibraries = [];
         let userSettings = {
-            currentLibrary: 'Default'
+            currentLibrary: ''
         };
 
         const getLibraryCollection = (lib) => collection(db, 'artifacts', appId, 'public', 'data', lib);
         const getWordDoc = (lib, docId) => doc(db, 'artifacts', appId, 'public', 'data', lib, docId);
-        // Sync with backend path
         const getMetaDoc = () => doc(db, 'artifacts', appId, 'public', 'data', 'meta_config', 'settings');
 
         window.showModal = (title, message) => {
@@ -271,7 +270,6 @@
                 updateConnectionStatus(true);
                 loadSettingsFromLocal();
                 setupLibrariesMetaListener();
-                setupRealtimeListener(); 
             } catch (error) {
                 console.error(error);
                 updateConnectionStatus(false);
@@ -294,21 +292,31 @@
             onSnapshot(metaRef, (docSnap) => {
                 if (docSnap.exists() && docSnap.data().libraries) {
                     const cloudList = docSnap.data().libraries;
-                    if (Array.isArray(cloudList)) {
-                        // 合并云端已有的列表和本地列表，避免云端手动加的被冲掉
-                        availableLibraries = Array.from(new Set([...cloudList, ...availableLibraries, 'Default']));
+                    if (Array.isArray(cloudList) && cloudList.length > 0) {
+                        availableLibraries = cloudList;
                         
-                        // Fallback if current library was deleted
+                        // 如果当前本地保存的词库不在云端列表里，强制选中云端第一个
                         if (!availableLibraries.includes(currentLibrary)) {
-                            currentLibrary = 'Default';
-                            userSettings.currentLibrary = 'Default';
+                            currentLibrary = availableLibraries[0];
+                            userSettings.currentLibrary = currentLibrary;
                             localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
+                            setupRealtimeListener();
+                        } else if (!unsubscribeSnapshot) {
+                            // 第一次加载时，如果库合法但还没监听单词数据，则启动监听
                             setupRealtimeListener();
                         }
                         updateLibrarySelectUI();
+                    } else {
+                        // 云端列表为空
+                        availableLibraries = [];
+                        updateLibrarySelectUI();
+                        resetDashboard();
                     }
                 } else {
-                    setDoc(metaRef, { libraries: availableLibraries }, { merge: true }).catch(console.error);
+                    // 云端文档不存在（不负责创建，只清空）
+                    availableLibraries = [];
+                    updateLibrarySelectUI();
+                    resetDashboard();
                 }
             }, (err) => console.log("Meta listener error:", err));
         }
@@ -317,20 +325,42 @@
             const select = document.getElementById('settingLibrary');
             if (!select) return;
             select.innerHTML = '';
+            
+            if (availableLibraries.length === 0) {
+                const opt = document.createElement('option');
+                opt.value = "";
+                opt.innerText = "No Library Available";
+                select.appendChild(opt);
+                return;
+            }
+
             availableLibraries.forEach(lib => {
                 const opt = document.createElement('option');
                 opt.value = lib;
                 opt.innerText = lib;
                 select.appendChild(opt);
             });
-            select.value = currentLibrary;
+            
+            if (currentLibrary && availableLibraries.includes(currentLibrary)) {
+                select.value = currentLibrary;
+            }
+        }
+
+        function resetDashboard() {
+            if (unsubscribeSnapshot) {
+                unsubscribeSnapshot();
+                unsubscribeSnapshot = null;
+            }
+            allWords = [];
+            updateDashboardStats();
+            updateSessionAvailability();
         }
 
         function setupRealtimeListener() {
+            if (!currentLibrary) return;
+
             if (unsubscribeSnapshot) {
                 unsubscribeSnapshot();
-                allWords = []; 
-                updateDashboardStats();
             }
 
             const wordsRef = getLibraryCollection(currentLibrary);
@@ -382,7 +412,7 @@
             // New Words UI Update
             document.getElementById('newWordsText').innerText = newWords.length;
             const btnNew = document.getElementById('btnStartNew');
-            if (newWords.length === 0) {
+            if (newWords.length === 0 || !currentLibrary) {
                 btnNew.disabled = true;
                 btnNew.innerHTML = `<i class="fa-solid fa-check"></i> All Caught Up`;
             } else {
@@ -393,7 +423,7 @@
             // Review UI Update
             document.getElementById('reviewWordsText').innerText = reviewWords.length;
             const btnReview = document.getElementById('btnStartReview');
-            if (reviewWords.length === 0) {
+            if (reviewWords.length === 0 || !currentLibrary) {
                 btnReview.disabled = true;
                 btnReview.innerHTML = `<i class="fa-solid fa-check"></i> All Reviewed`;
             } else {
@@ -590,8 +620,7 @@
             const saved = localStorage.getItem('vocabMasterSettings');
             if (saved) {
                 userSettings = JSON.parse(saved);
-                currentLibrary = userSettings.currentLibrary || 'Default';
-                updateLibrarySelectUI();
+                currentLibrary = userSettings.currentLibrary || '';
             }
         }
 
