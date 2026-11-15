@@ -200,7 +200,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, doc, collection, onSnapshot, updateDoc, writeBatch, arrayUnion } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const appId = 'my-vocab-master-app'; 
         const firebaseConfig = {
@@ -295,25 +295,21 @@
                     if (Array.isArray(cloudList) && cloudList.length > 0) {
                         availableLibraries = cloudList;
                         
-                        // 如果当前本地保存的词库不在云端列表里，强制选中云端第一个
                         if (!availableLibraries.includes(currentLibrary)) {
                             currentLibrary = availableLibraries[0];
                             userSettings.currentLibrary = currentLibrary;
                             localStorage.setItem('vocabMasterSettings', JSON.stringify(userSettings));
                             setupRealtimeListener();
                         } else if (!unsubscribeSnapshot) {
-                            // 第一次加载时，如果库合法但还没监听单词数据，则启动监听
                             setupRealtimeListener();
                         }
                         updateLibrarySelectUI();
                     } else {
-                        // 云端列表为空
                         availableLibraries = [];
                         updateLibrarySelectUI();
                         resetDashboard();
                     }
                 } else {
-                    // 云端文档不存在（不负责创建，只清空）
                     availableLibraries = [];
                     updateLibrarySelectUI();
                     resetDashboard();
@@ -392,13 +388,13 @@
                     return now >= midnightAfter;
                 } else if (w.status === 'known') {
                     if (knownCount >= 2) {
-                        // Passed 30 days
-                        const thirtyDaysLater = new Date(lastRev.getTime() + 30 * 24 * 60 * 60 * 1000);
-                        return now >= thirtyDaysLater;
+                        // 30 days later at midnight
+                        const thirtyDaysLaterMidnight = new Date(lastRev.getFullYear(), lastRev.getMonth(), lastRev.getDate() + 30);
+                        return now >= thirtyDaysLaterMidnight;
                     } else {
-                        // Passed 6 days
-                        const sixDaysLater = new Date(lastRev.getTime() + 6 * 24 * 60 * 60 * 1000);
-                        return now >= sixDaysLater;
+                        // 6 days later at midnight
+                        const sixDaysLaterMidnight = new Date(lastRev.getFullYear(), lastRev.getMonth(), lastRev.getDate() + 6);
+                        return now >= sixDaysLaterMidnight;
                     }
                 }
                 return false;
@@ -440,7 +436,8 @@
                 id: w.id,
                 status: w.status,
                 knownCount: w.knownCount,
-                lastReviewedAt: w.lastReviewedAt
+                lastReviewedAt: w.lastReviewedAt,
+                reviewHistory: w.reviewHistory || [] // Capture history for rollback
             }));
 
             currentCardIndex = 0;
@@ -456,14 +453,14 @@
             let newWords = allWords.filter(w => !w.lastReviewedAt);
             newWords.sort((a, b) => (a.importedAt || 0) - (b.importedAt || 0)); 
             
-            sessionWords = newWords.slice(0, 100); // 默认每次100个新词
+            sessionWords = newWords.slice(0, 100);
             launchSession();
         };
 
         window.startReviewSession = () => {
             let dueWords = getDueReviewWords();
             
-            // PRIORITY SORTING (Matching Backend Settings)
+            // PRIORITY SORTING
             dueWords.forEach(w => {
                 const knownCount = w.knownCount !== undefined ? w.knownCount : (w.status === 'known' ? 1 : 0);
                 if (w.status === 'unknown') w.priority = 3;
@@ -478,7 +475,7 @@
                 return timeA - timeB;
             });
 
-            sessionWords = dueWords.slice(0, 100); // 默认最多100个复习词
+            sessionWords = dueWords.slice(0, 100);
             launchSession();
         }
 
@@ -512,7 +509,8 @@
                         batch.update(docRef, {
                             status: originalState.status,
                             knownCount: originalState.knownCount !== undefined ? originalState.knownCount : 0,
-                            lastReviewedAt: originalState.lastReviewedAt || null
+                            lastReviewedAt: originalState.lastReviewedAt || null,
+                            reviewHistory: originalState.reviewHistory || []
                         });
                     }
                 }
@@ -561,7 +559,11 @@
             updateDoc(wordRef, {
                 status: newStatus,
                 knownCount: newKnownCount,
-                lastReviewedAt: nowIso
+                lastReviewedAt: nowIso,
+                reviewHistory: arrayUnion({
+                    timestamp: nowIso,
+                    status: newStatus
+                })
             }).catch(e => console.error("Update failed", e)); 
 
             currentCardIndex++;
